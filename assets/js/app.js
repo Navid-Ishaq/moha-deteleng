@@ -113,7 +113,36 @@
   const events=(Array.isArray(state.calendarEvents)?state.calendarEvents:[]).filter(e=>visible.includes(e.calendar));
   target.innerHTML=events.length?events.map(e=>`<article class="sim-event"><span class="badge">${esc(e.calendar)}</span><strong>${esc(e.title)}</strong><p>${esc(e.date)} · ${esc(e.time)} · ${esc(e.recurrence)} · ${e.reminder==='none'?'Sense avís':esc(e.reminder)+' minuts abans'}</p></article>`).join(''):'<p class="muted">No hi ha esdeveniments visibles. Crea’n un o mostra un calendari.</p>';
  }
- function route(){runs.clear();const [page,arg]=(location.hash.slice(1)||'inici').split('/');document.querySelectorAll('#navigation a').forEach(a=>{const match=a.hash==='#'+page+(page==='bloc'?'/'+arg:'');if(match)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});$('#navigation').classList.remove('open');$('#menu').setAttribute('aria-expanded','false');if(page==='llico')lesson(arg);else if(page==='bloc')blockPage(Number(arg));else if(page==='anti')anti(arg);else if(page==='repas')quick(arg);else if(page==='errors')errors();else if(page==='examen'){if(exam?.submitted)examResults();else examIntro();}else home();window.scrollTo(0,0);$('#main').focus({preventScroll:true});}
+
+ // The catalog is intentionally separate from the MP0233 lesson/progress logic.
+ const catalog=()=>Array.isArray(window.MOHA_COURSES)?window.MOHA_COURSES:[];
+ const courseBy=id=>catalog().find(c=>String(c.id)===String(id));
+ function courseHref(course,item){return item.type==='native'?(item.hash||'#inici'):'#curso/'+encodeURIComponent(course.id)+'/'+encodeURIComponent(item.id);}
+ function itemCard(course,item){
+  return `<article class="catalog-item"><span class="catalog-kicker">${esc(item.kind||'Material')}</span><h3>${esc(item.title)}</h3><p>${esc(item.description||'')}</p><a class="button-link" href="${esc(courseHref(course,item))}">Obre el material ↗</a></article>`;
+ }
+ function courseCard(course){
+  const count=Array.isArray(course.items)?course.items.length:0;
+  return `<article class="catalog-course"><span class="catalog-kicker">${esc(course.subtitle||'')}</span><h2>${esc(course.name)}</h2><p>${esc(course.description||'')}</p><span class="catalog-count">${count} ${count===1?'material':'materials'}</span><a class="button-link${count?'':' secondary'}" href="#curso/${encodeURIComponent(course.id)}">${count?'Explora el curs ↗':'Veure el curs →'}</a></article>`;
+ }
+ function coursesHome(){
+  shell(`<div class="catalog-hero"><span class="eyebrow">MOHA Learning · El teu espai</span><h1>Els teus cursos.<br><em>Tot al seu lloc.</em></h1><p>Selecciona un curs per obrir les seves lliçons, pràctiques i qüestionaris. Cada curs tindrà els seus propis materials a mesura que els afegim.</p></div><div class="catalog-grid">${catalog().map(courseCard).join('')}</div>`);
+ }
+ function coursePage(id){
+  const c=courseBy(id);if(!c){coursesHome();return;}
+  const items=Array.isArray(c.items)?c.items:[];
+  shell(`<div class="breadcrumb"><a href="#cursos">Cursos</a> / ${esc(c.name)}</div><div class="page-intro"><span class="eyebrow">${esc(c.subtitle||'')}</span><h1>${esc(c.name)}</h1><p>${esc(c.description||'')}</p><div class="catalog-count">${items.length} ${items.length===1?'material disponible':'materials disponibles'}</div></div>${items.length?`<div class="catalog-items">${items.map(item=>itemCard(c,item)).join('')}</div>`:'<div class="catalog-empty"><h2>Properament</h2><p>Encara no hi ha lliçons en aquest curs. Quan les afegim al catàleg apareixeran aquí.</p></div>'}`);
+ }
+ function courseItemPage(courseId,itemId){
+  const course=courseBy(courseId),item=course?.items?.find(x=>String(x.id)===String(itemId));
+  if(!course||!item){coursesHome();return;}
+  if(item.type==='native'){location.hash=item.hash||'#inici';return;}
+  // Local catalog paths only; do not embed untrusted remote URLs.
+  const file=String(item.file||'');
+  if(item.type!=='embedded'||!/^courses\/[a-z0-9-]+\/[a-z0-9-]+\.html$/i.test(file)){coursePage(courseId);return;}
+  shell(`<div class="breadcrumb"><a href="#cursos">Cursos</a> / <a href="#curso/${encodeURIComponent(course.id)}">${esc(course.name)}</a> / ${esc(item.title)}</div><div class="catalog-lesson-heading"><div><span class="eyebrow">${esc(item.kind||'Qüestionari')}</span><h1>${esc(item.title)}</h1><p>${esc(item.description||'')}</p></div><a href="${esc(file)}" target="_blank" rel="noopener" class="button-link secondary">Pantalla completa ↗</a></div><div class="catalog-embed"><iframe title="${esc(item.title)}" src="${esc(file)}" loading="eager" referrerpolicy="no-referrer"></iframe></div>`);
+ }
+ function route(){runs.clear();const [page,arg,itemId]=(location.hash.slice(1)||'cursos').split('/');document.querySelectorAll('#navigation a').forEach(a=>{const match=a.hash==='#'+page+((page==='bloc'||page==='curso')?'/'+arg:'');if(match)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});$('#navigation').classList.remove('open');$('#menu').setAttribute('aria-expanded','false');if(page==='cursos')coursesHome();else if(page==='curso'){if(itemId)courseItemPage(arg,itemId);else coursePage(arg);}else if(page==='llico')lesson(arg);else if(page==='bloc')blockPage(Number(arg));else if(page==='anti')anti(arg);else if(page==='repas')quick(arg);else if(page==='errors')errors();else if(page==='examen'){if(exam?.submitted)examResults();else examIntro();}else home();window.scrollTo(0,0);$('#main').focus({preventScroll:true});}
  $('#menu').onclick=()=>{const open=$('#navigation').classList.toggle('open');$('#menu').setAttribute('aria-expanded',String(open));};
  $('#reset').onclick=()=>$('#reset-dialog').showModal();$('#cancel-reset').onclick=()=>$('#reset-dialog').close();$('#confirm-reset').onclick=()=>{state=empty();exam=null;runs.clear();save();$('#reset-dialog').close();if(location.hash==='#inici')route();else location.hash='inici';};
  window.addEventListener('hashchange',route);save();route();
